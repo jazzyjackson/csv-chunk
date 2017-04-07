@@ -23,11 +23,59 @@ var input = path.resolve(argv._[0]),
 require('mkdirp').sync(output);
 
 var options = require('lodash.pick')(argv, 'delimiter', 'quote', 'headers');
-var stream = csv.fromStream(fs.createReadStream(input), options);
 
 // Batch em to go
 var count = 0;
-hl(stream).batch(argv.n).each(function(data) {
-	var outstream = fs.createWriteStream(path.join(output, ++count + '.csv'));
-	csv.writeToStream(outstream, data, options);
-});
+// hl(stream).batch(argv.n).each(function(data) {
+// 	var outstream = fs.createWriteStream(path.join(output, ++count + '.csv'));
+// 	csv.writeToStream(outstream, data, options);
+// });
+
+let funcBuckets = Array.from(new Array(argv.n), function(element, index){
+	let outstream = fs.createWriteStream(path.join(output, 'test' + index + '.csv'));
+	outstream.setMaxListeners(Infinity)
+	console.log(Object.keys(outstream))
+	return function(data){
+		console.log(data)
+		console.log(typeof data)
+		outstream.write(Object.entries(data).map(escapeCSV).join(',') + '\n')
+	}
+})
+
+console.log(funcBuckets)
+
+var rowNum = 0;
+
+var stream = csv.fromStream(fs.createReadStream(input), options);
+stream.on('data', function(data){
+	rowNum++
+	// if(rowNum < 100) console.log(rowNum % argv.n)
+	funcBuckets[rowNum % argv.n](data)
+})
+
+stream.on('close', ()=>{
+	funcBuckets
+})
+
+
+function escapeCSV(datum){
+    // per csv definiton RFC 4180 
+    // https://tools.ietf.org/html/rfc4180#page-2
+    if(typeof datum == 'string' && datum.match(/[",\n]/)){ //if there are commas or double quotes or newline characters
+        datum = datum.replace(/"/g, `""`) //replace quotes that are part of the data with double quotes
+        datum = `"${datum}"` //wrap the data in double quotes
+    }
+    return datum
+}
+
+// The opposite of Object.keys. Actually exists in the browser, but not in node, so just a little helper func.
+Object.entries = function(anObj){
+    let result = []
+        for(key in anObj){
+            result.push(anObj[key])
+        }
+    return result;
+}
+
+
+
